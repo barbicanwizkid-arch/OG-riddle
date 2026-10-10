@@ -17,6 +17,8 @@ ureq = { version = "2.10", default-features = false, features = ["tls"] }
 [features]
 # Link libquill.so (vendor e-ink engine C ABI) for full-takeover mode.
 takeover = []
+# reMarkable 2: direct rm2fb IPC, 1404x1872, rotated Wacom input.
+rm2 = []
 
 [profile.release]
 strip = true

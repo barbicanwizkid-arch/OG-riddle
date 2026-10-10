@@ -1,4 +1,9 @@
 fn main() {
+    if std::env::var("CARGO_FEATURE_RM2").is_ok()
+        && std::env::var("CARGO_FEATURE_TAKEOVER").is_ok()
+    {
+        panic!("rm2 and takeover are separate hardware targets; do not combine them");
+    }
     if std::env::var("CARGO_FEATURE_TAKEOVER").is_ok() {
         // libquill.so + libqsgepaper.so from the quill project.
         let quill = concat!(env!("CARGO_MANIFEST_DIR"), "/../quill");

@@ -1,0 +1,39 @@
+name: reMarkable 2 experimental build
+on:
+  push:
+    branches: [main, codex/remarkable-2-port]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-and-package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain
+        run: |
+          rustup toolchain install 1.90.0 --profile minimal
+          rustup default 1.90.0
+          rustup target add armv7-unknown-linux-musleabihf
+          python3 -m pip install ziglang==0.13.0
+      - name: Host tests and launch recovery tests
+        run: |
+          cargo test --locked
+          cargo test --locked --features rm2
+          python3 -m unittest discover -s tests -v
+          sh -n scripts/rm2/run.sh scripts/rm2/launch.sh scripts/rm2/recover.sh scripts/build-rm2.sh scripts/package-rm2.sh
+      - name: Cross compile ARMv7 static binary
+        run: ./scripts/build-rm2.sh
+      - name: Execute ARM tests under QEMU
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y qemu-user
+          ./scripts/build-rm2.sh test
+      - name: Package with verified upstream display driver
+        run: ./scripts/package-rm2.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: riddle-rm2-3.0.4.1305-experimental
+          path: dist/riddle-rm2-3.0.4.1305.tar.gz*
+          if-no-files-found: error
