@@ -21,7 +21,7 @@ impl PowerButton {
             let name = std::fs::read_to_string(format!("/sys/class/input/event{i}/device/name"))
                 .unwrap_or_default()
                 .to_lowercase();
-            if !name.contains("powerkey") && !name.contains("power button") {
+            if !name.contains("powerkey") && !name.contains("power button") && !name.contains("gpio-keys") {
                 continue;
             }
             let cpath = std::ffi::CString::new(format!("/dev/input/event{i}")).unwrap();
@@ -29,7 +29,11 @@ impl PowerButton {
             if fd < 0 {
                 return Err(io::Error::last_os_error());
             }
-            let grabbed = unsafe { libc::ioctl(fd, EVIOCGRAB, 1i32) } == 0;
+            let grabbed = unsafe { libc::ioctl(fd, EVIOCGRAB as _, 1i32) } == 0;
+            if cfg!(feature = "rm2") && !grabbed {
+                unsafe { libc::close(fd); }
+                return Err(io::Error::other("could not grab power button for safe exit"));
+            }
             eprintln!("riddle: power button /dev/input/event{i} (grabbed: {grabbed})");
             return Ok(Self { fd, grabbed });
         }
@@ -42,17 +46,15 @@ impl PowerButton {
     /// True if a power-key press (value 1) was seen since the last drain.
     pub fn drain_pressed(&mut self) -> bool {
         let mut pressed = false;
-        let mut buf = [0u8; 24 * 16];
+        let mut buf = [0u8; crate::evdev::EVENT_SIZE * 16];
         loop {
             let n =
                 unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
             if n <= 0 {
                 break;
             }
-            for chunk in buf[..n as usize].chunks_exact(24) {
-                let etype = u16::from_le_bytes(chunk[16..18].try_into().unwrap());
-                let code = u16::from_le_bytes(chunk[18..20].try_into().unwrap());
-                let value = i32::from_le_bytes(chunk[20..24].try_into().unwrap());
+            for chunk in buf[..n as usize].chunks_exact(crate::evdev::EVENT_SIZE) {
+                let (etype, code, value) = crate::evdev::decode(chunk).expect("complete input event");
                 if etype == EV_KEY && code == KEY_POWER && value == 1 {
                     pressed = true;
                 }
@@ -65,7 +67,7 @@ impl PowerButton {
 impl Drop for PowerButton {
     fn drop(&mut self) {
         unsafe {
-            libc::ioctl(self.fd, EVIOCGRAB, 0i32);
+            libc::ioctl(self.fd, EVIOCGRAB as _, 0i32);
             libc::close(self.fd);
         }
     }

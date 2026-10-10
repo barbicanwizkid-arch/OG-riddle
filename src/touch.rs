@@ -57,7 +57,7 @@ impl TouchDevice {
                     if fd < 0 {
                         return Err(io::Error::last_os_error());
                     }
-                    unsafe { libc::ioctl(fd, EVIOCGRAB, 1i32) };
+                    unsafe { libc::ioctl(fd, EVIOCGRAB as _, 1i32) };
                     return Ok(Self {
                         fd,
                         slots: [Slot::default(); MAX_SLOTS],
@@ -91,17 +91,15 @@ impl TouchDevice {
 
     pub fn drain(&mut self) -> Vec<Gesture> {
         let mut out = Vec::new();
-        let mut buf = [0u8; 24 * 64];
+        let mut buf = [0u8; crate::evdev::EVENT_SIZE * 64];
         loop {
             let n =
                 unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
             if n <= 0 {
                 break;
             }
-            for chunk in buf[..n as usize].chunks_exact(24) {
-                let etype = u16::from_le_bytes(chunk[16..18].try_into().unwrap());
-                let code = u16::from_le_bytes(chunk[18..20].try_into().unwrap());
-                let value = i32::from_le_bytes(chunk[20..24].try_into().unwrap());
+            for chunk in buf[..n as usize].chunks_exact(crate::evdev::EVENT_SIZE) {
+                let (etype, code, value) = crate::evdev::decode(chunk).expect("complete input event");
                 if etype == EV_ABS && code == ABS_MT_SLOT {
                     self.cur = (value.max(0) as usize).min(MAX_SLOTS - 1);
                 } else if etype == EV_ABS && code == ABS_MT_POSITION_Y {
@@ -180,7 +178,7 @@ impl TouchDevice {
 impl Drop for TouchDevice {
     fn drop(&mut self) {
         unsafe {
-            libc::ioctl(self.fd, EVIOCGRAB, 0i32);
+            libc::ioctl(self.fd, EVIOCGRAB as _, 0i32);
             libc::close(self.fd);
         }
     }

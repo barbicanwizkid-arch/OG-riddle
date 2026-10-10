@@ -7,6 +7,8 @@ use std::io;
 
 pub enum Display {
     Qtfb(crate::qtfb::QtfbClient),
+    #[cfg(feature = "rm2")]
+    Rm2(crate::rm2fb::Rm2fb),
     #[allow(dead_code)]
     Quill,
 }
@@ -27,6 +29,12 @@ mod quill_ffi {
 
 impl Display {
     pub fn open() -> io::Result<(Self, Surface)> {
+        #[cfg(feature = "rm2")]
+        {
+            let (client, surface) = crate::rm2fb::Rm2fb::open()?;
+            return Ok((Display::Rm2(client), surface));
+        }
+        #[allow(unreachable_code)]
         if let Ok(key) = std::env::var("QTFB_KEY") {
             let key: i32 = key.parse().map_err(io::Error::other)?;
             let mut client = crate::qtfb::QtfbClient::connect(
@@ -69,6 +77,8 @@ impl Display {
     /// Push a region to the panel. `fast` selects the low-latency waveform.
     pub fn update(&self, x: i32, y: i32, w: i32, h: i32, _fast: bool) {
         match self {
+            #[cfg(feature = "rm2")]
+            Display::Rm2(c) => c.update(x, y, w, h, _fast, false),
             Display::Qtfb(c) => {
                 let _ = c.update_partial(x, y, w, h);
             }
@@ -86,6 +96,8 @@ impl Display {
 
     pub fn update_all(&self, w: usize, h: usize) {
         match self {
+            #[cfg(feature = "rm2")]
+            Display::Rm2(c) => c.update(0, 0, w as i32, h as i32, false, true),
             Display::Qtfb(c) => {
                 let _ = c.update_all();
             }
@@ -104,6 +116,8 @@ impl Display {
     /// Flashing clear of the whole panel (ghost removal).
     pub fn full_refresh(&self, w: usize, h: usize) {
         match self {
+            #[cfg(feature = "rm2")]
+            Display::Rm2(c) => c.update(0, 0, w as i32, h as i32, false, true),
             Display::Qtfb(c) => {
                 let _ = c.request_full_refresh();
             }
@@ -123,6 +137,8 @@ impl Display {
     /// (returns Err); the takeover backend has no window to lose.
     pub fn pump(&self) -> io::Result<Vec<crate::qtfb::InputEvent>> {
         match self {
+            #[cfg(feature = "rm2")]
+            Display::Rm2(c) => { c.check()?; Ok(Vec::new()) },
             Display::Qtfb(c) => c.drain_events(),
             Display::Quill => {
                 #[cfg(feature = "takeover")]

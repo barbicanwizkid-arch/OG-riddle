@@ -111,6 +111,16 @@ const BODY_TAKEOVER: &[&str] = &[
     "A large ? summons this guide.",
 ];
 /// Windowed mode: AppLoad owns the window and xochitl owns the button.
+const BODY_RM2: &[&str] = &[
+    "Write, then rest your quill.",
+    "The diary reads your page and replies.",
+    "",
+    "Flip the marker to erase.",
+    "Press power to leave the diary.",
+    "Your normal notebooks will return.",
+    "",
+    "A large ? summons this guide.",
+];
 const BODY_WINDOWED: &[&str] = &[
     "Write, then rest your quill:",
     "the diary drinks your ink and Tom replies.",
@@ -145,7 +155,7 @@ pub struct Help {
 /// The gesture list depends on the display mode: only takeover owns the
 /// touchscreen (5-finger exit) and the power button.
 pub fn show(surf: &mut Surface, font: &FontRef, takeover: bool) -> Help {
-    let body = if takeover { BODY_TAKEOVER } else { BODY_WINDOWED };
+    let body = if cfg!(feature = "rm2") { BODY_RM2 } else if takeover { BODY_TAKEOVER } else { BODY_WINDOWED };
     let title_h = (TITLE_PX * 1.4) as usize;
     let line_h = (BODY_PX * 1.3) as usize;
     let footer_h = (FOOTER_PX * 1.4) as usize;

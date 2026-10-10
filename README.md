@@ -1,3 +1,5 @@
+> **reMarkable 2 fork:** Experimental support for software **3.0.4.1305** is on this branch. Start with [the reMarkable 2 guide](docs/RM2.md). The Paper Pro instructions below do not apply to reMarkable 2. Hardware acceptance is still required.
+
 # riddle — the diary of Tom Riddle, for the reMarkable Paper Pro
 
 Write on the page with your pen. After a pause, the diary **drinks your ink** —

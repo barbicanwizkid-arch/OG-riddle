@@ -8,6 +8,9 @@
 //! built with --features takeover and launched with xochitl stopped.
 
 mod display;
+mod evdev;
+#[cfg(feature = "rm2")]
+mod rm2fb;
 mod fb;
 mod help;
 mod ink;
@@ -104,8 +107,16 @@ fn main() {
             let png = args.get(2).map(String::as_str).unwrap_or(PNG_PATH);
             std::process::exit(oracle_test(png));
         }
+        #[cfg(feature = "rm2")]
+        Some("--rm2-check") => {
+            match rm2fb::Rm2fb::open() {
+                Ok(_) => println!("rm2fb server acknowledged; framebuffer size verified"),
+                Err(e) => { eprintln!("rm2fb check: {e}"); std::process::exit(1); }
+            }
+            return;
+        }
         Some("--version" | "-V") => {
-            println!("riddle {}", env!("CARGO_PKG_VERSION"));
+            println!("riddle {}{}", env!("CARGO_PKG_VERSION"), if cfg!(feature = "rm2") { " (experimental reMarkable 2)" } else { "" });
             return;
         }
         Some("--help" | "-h") => {
@@ -183,9 +194,10 @@ fn run() -> std::io::Result<()> {
 
     let (disp, mut surf) = display::Display::open()?;
     let takeover = matches!(disp, display::Display::Quill);
+    let rm2 = cfg!(feature = "rm2");
     eprintln!(
         "riddle: display {} ({}x{} stride {})",
-        if takeover { "quill/takeover" } else { "qtfb" },
+        if rm2 { "rm2fb" } else if takeover { "quill/takeover" } else { "qtfb" },
         surf.w,
         surf.h,
         surf.stride
@@ -194,6 +206,7 @@ fn run() -> std::io::Result<()> {
     let mut pen_dev = match pen::PenDevice::open() {
         Ok(p) => Some(p),
         Err(e) => {
+            if rm2 { return Err(e); }
             eprintln!("riddle: raw pen unavailable ({e}), falling back to qtfb pen events");
             None
         }
@@ -201,7 +214,9 @@ fn run() -> std::io::Result<()> {
     // Takeover mode: touch is ours too; 5-finger tap = quit.
     let mut touch_dev = if takeover { touch::TouchDevice::open().ok() } else { None };
     // Takeover mode: the power button is ours too (sleep page + suspend).
-    let mut power_dev = if takeover {
+    let mut power_dev = if rm2 {
+        Some(power::PowerButton::open()?)
+    } else if takeover {
         power::PowerButton::open().map_err(|e| eprintln!("riddle: no power button ({e})")).ok()
     } else {
         None
@@ -274,6 +289,10 @@ fn run() -> std::io::Result<()> {
         // ---- power button: sleep page, suspend, restore on wake ----
         if let Some(ref mut p) = power_dev {
             let pressed = p.drain_pressed();
+            if pressed && rm2 {
+                eprintln!("riddle: power button exit; restoring the notebook interface");
+                break;
+            }
             if pressed && Instant::now() >= power_grace {
                 eprintln!("riddle: sleeping (power button)");
                 let saved = help::show_sleep(&mut surf, &font);
@@ -364,6 +383,7 @@ fn run() -> std::io::Result<()> {
         // ---- window-system events (qtfb close detection + pen fallback) ----
         let events = match disp.pump() {
             Ok(v) => v,
+            Err(e) if rm2 => return Err(e),
             Err(_) => break, // qtfb window closed
         };
         for ev in events {
@@ -629,7 +649,7 @@ fn run() -> std::io::Result<()> {
                         let region = plan.region;
                         State::Lingering { until: Instant::now() + linger.min(Duration::from_secs(20)), region }
                     } else {
-                        State::Replying { plan, next: Instant::now() + Duration::from_millis(14), rx }
+                        State::Replying { plan, next: Instant::now() + Duration::from_millis(if rm2 { 40 } else { 14 }), rx }
                     }
                 } else {
                     State::Replying { plan, next, rx }
@@ -702,7 +722,7 @@ fn run() -> std::io::Result<()> {
                             region,
                         }
                     } else {
-                        State::Conjuring { plan, next: Instant::now() + Duration::from_millis(10), saved }
+                        State::Conjuring { plan, next: Instant::now() + Duration::from_millis(if rm2 { 40 } else { 10 }), saved }
                     }
                 } else {
                     State::Conjuring { plan, next, saved }
