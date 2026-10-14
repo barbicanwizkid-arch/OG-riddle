@@ -1,0 +1,4 @@
+payload/
+oracle.env
+*.zip
+*.tar.gz
